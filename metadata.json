@@ -1,0 +1,8 @@
+{
+  "name": "Vizuhalizando AI",
+  "description": "AI Image Consultant App powered by Gemini Nano Banana and Pro models.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
