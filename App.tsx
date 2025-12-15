@@ -1180,7 +1180,7 @@ const VizuhalizandoApp = () => {
               </button>
               <button 
                  onClick={saveToWardrobe}
-                 className="w-10 h-10 bg-green-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-green-600 transition-colors shadow-lg"
+                 className="w-10 h-10 bg-blue-800 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-blue-900 transition-colors shadow-lg"
                  title="Salvar no Guarda-Roupa"
               >
                 <Save className="w-5 h-5" />
