@@ -11,7 +11,7 @@ const getClient = async (requireUserKey = false) => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-// Wrapper to handle API errors, specifically permissions (403) and not found (404)
+// Wrapper to handle API errors, specifically permissions (403), not found (404), and quota (429)
 // by prompting for a new key and retrying.
 const executeWithRetry = async <T>(
   operation: (ai: GoogleGenAI) => Promise<T>,
@@ -24,8 +24,9 @@ const executeWithRetry = async <T>(
     // Check for 403 Permission Denied or 404 Not Found (often key/project related)
     const isPermissionError = error.message?.includes('403') || error.status === 403 || error.message?.includes('Permission denied') || error.message?.includes('PERMISSION_DENIED');
     const isNotFoundError = error.message?.includes('not found') || error.status === 404 || error.message?.includes('Requested entity was not found');
+    const isQuotaError = error.message?.includes('429') || error.status === 429 || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED');
     
-    if ((isPermissionError || isNotFoundError) && (window as any).aistudio) {
+    if ((isPermissionError || isNotFoundError || isQuotaError) && (window as any).aistudio) {
       // Prompt user to select a key
       await (window as any).aistudio.openSelectKey();
       // Re-instantiate client with the new key (injected into env)
@@ -43,6 +44,18 @@ export interface AnalysisResult {
   season: string;
   contrast: 'Baixo' | 'Médio' | 'Alto';
   traits: string[];
+}
+
+export interface LayoutResult {
+  conceptName: string;
+  spatialStrategy: string;
+  zones: Array<{
+    name: string;
+    description: string;
+    items: string[];
+    placement: string;
+  }>;
+  lightingTips: string;
 }
 
 // Feature: Analyze Images (Gemini 3 Pro + Thinking)
@@ -138,5 +151,66 @@ export const editFashionLook = async (base64Image: string, prompt: string): Prom
       }
     }
     throw new Error("Failed to edit image");
+  }, false);
+};
+
+// Feature: Interior Layout Generator (Gemini 2.5 Flash)
+export const generateLayoutSuggestion = async (
+  roomType: string,
+  width: number,
+  length: number,
+  preferences: string[]
+): Promise<LayoutResult> => {
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      conceptName: { type: Type.STRING },
+      spatialStrategy: { type: Type.STRING, description: "How the preferences guided the layout choice" },
+      zones: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            description: { type: Type.STRING },
+            items: { type: Type.ARRAY, items: { type: Type.STRING } },
+            placement: { type: Type.STRING, description: "Where in the room (e.g., Near window, North wall)" }
+          }
+        }
+      },
+      lightingTips: { type: Type.STRING }
+    },
+    required: ["conceptName", "spatialStrategy", "zones", "lightingTips"]
+  };
+
+  return executeWithRetry(async (ai) => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [{ 
+          text: `Act as a world-class Interior Architect. Design an optimal layout for a ${roomType} (${width}m x ${length}m).
+          
+          CLIENT PREFERENCES:
+          ${preferences.length > 0 ? preferences.map(p => `- ${p}`).join('\n') : '- Optimize for functionality and flow.'}
+          
+          DESIGN RULES:
+          1. Respect the dimensions strictly.
+          2. Prioritize the client preferences above standard conventions if necessary.
+          3. If "Home Office" is requested, define a specific zone with desk placement.
+          4. For "Natural Light", prioritize furniture orientation towards potential window locations.
+          
+          Provide a structured JSON response.` 
+        }]
+      },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: schema
+      }
+    });
+
+    if (response.text) {
+      return JSON.parse(response.text) as LayoutResult;
+    }
+    throw new Error("Failed to generate layout");
   }, false);
 };

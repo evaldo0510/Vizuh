@@ -4,13 +4,14 @@ import {
   ShoppingBag, ChevronRight, Play, CheckCircle, Lock, 
   Menu, X, TrendingUp, ScanFace, ArrowRight, Download,
   MapPin, Aperture, Eye, Unlock, Crown, Check, ShieldCheck, Dumbbell, 
-  Wand2, Image as ImageIcon, Loader2, Undo, Redo, Save, Share2, Clock
+  Wand2, Image as ImageIcon, Loader2, Undo, Redo, Save, Share2, Clock,
+  Layout, Sun, Monitor, Sofa, Grid3X3, Lightbulb, MessageSquare
 } from 'lucide-react';
-import { analyzeUserImage, generateFashionLook, editFashionLook, AnalysisResult } from './services/geminiService';
+import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutSuggestion, AnalysisResult, LayoutResult } from './services/geminiService';
 
 /**
- * VIZUHALIZANDO - AI Image Consultant App
- * * Versão: 8.2 - UX Loading Improvements
+ * VIZUHALIZANDO - AI Image Consultant & Spaces App
+ * * Versão: 8.4 - AutoLayout Custom Preferences
  */
 
 // --- Tipos & Interfaces ---
@@ -26,7 +27,8 @@ type ViewState =
   | 'look-result'
   | 'wardrobe-grid'
   | 'education' 
-  | 'professional';
+  | 'professional'
+  | 'layout-generator';
 
 type PlanTier = 'free' | 'pro_monthly' | 'pro_annual' | 'studio_basic' | 'studio_pro' | 'studio_elite';
 type ImageResolution = '1K' | '2K' | '4K';
@@ -67,6 +69,14 @@ const LOADING_MESSAGES = [
   "Ajustando a iluminação virtual...",
   "Renderizando detalhes em alta resolução...",
   "Finalizando sua produção de moda..."
+];
+
+const LAYOUT_LOADING_MESSAGES = [
+  "Analisando dimensões e briefing...",
+  "Desenhando zonas de atividade...",
+  "Posicionando mobiliário principal...",
+  "Aplicando preferências de estilo...",
+  "Finalizando conceito arquitetônico..."
 ];
 
 const STYLE_TIPS = [
@@ -205,6 +215,175 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
       {Icon && <Icon className="w-5 h-5 mr-2" />}
       {children}
     </button>
+  );
+};
+
+// --- Componente AutoLayoutGenerator (Nova Feature) ---
+const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
+  const [roomType, setRoomType] = useState('Sala de Estar');
+  const [width, setWidth] = useState(4);
+  const [length, setLength] = useState(5);
+  const [preferences, setPreferences] = useState<string[]>([]);
+  const [customPreference, setCustomPreference] = useState('');
+  const [result, setResult] = useState<LayoutResult | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const availablePreferences = [
+    { id: 'luz_natural', label: 'Priorizar Luz Natural', icon: Sun },
+    { id: 'home_office', label: 'Espaço Home Office', icon: Monitor },
+    { id: 'circulacao', label: 'Circulação Ampla', icon: ArrowRight },
+    { id: 'social', label: 'Foco Social/Receber', icon: User },
+    { id: 'armazenamento', label: 'Muito Armazenamento', icon: Grid3X3 },
+    { id: 'leitura', label: 'Canto de Leitura', icon: Sofa },
+  ];
+
+  const togglePreference = (pref: string) => {
+    setPreferences(prev => 
+      prev.includes(pref) ? prev.filter(p => p !== pref) : [...prev, pref]
+    );
+  };
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      const allPrefs = [...preferences];
+      if (customPreference.trim()) {
+        allPrefs.push(customPreference.trim());
+      }
+      
+      const layout = await generateLayoutSuggestion(roomType, width, length, allPrefs);
+      setResult(layout);
+    } catch (e) {
+      alert("Erro ao gerar layout. Tente novamente.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="p-6 bg-white shadow-sm flex items-center border-b border-slate-100">
+        <button onClick={onBack} className="mr-4"><ArrowRight className="w-6 h-6 rotate-180" /></button>
+        <div>
+          <h2 className="text-xl font-serif text-slate-900">Arquiteto IA</h2>
+          <p className="text-xs text-slate-500">AutoLayout com Gemini 2.5 Flash</p>
+        </div>
+      </div>
+
+      <div className="flex-1 p-6 overflow-y-auto">
+        {!result ? (
+          <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
+            
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Layout className="w-5 h-5 text-violet-600"/> Dimensões & Tipo
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Cômodo</label>
+                  <select 
+                    value={roomType} 
+                    onChange={e => setRoomType(e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-800"
+                  >
+                    <option>Sala de Estar</option>
+                    <option>Quarto de Casal</option>
+                    <option>Home Office</option>
+                    <option>Cozinha</option>
+                    <option>Varanda</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Largura (m)</label>
+                    <input type="number" value={width} onChange={e => setWidth(Number(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Comprimento (m)</label>
+                    <input type="number" value={length} onChange={e => setLength(Number(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500"/> Preferências
+              </h3>
+              <p className="text-sm text-slate-500 mb-4">O que é essencial para este ambiente?</p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                {availablePreferences.map(pref => (
+                  <button
+                    key={pref.id}
+                    onClick={() => togglePreference(pref.label)}
+                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 text-center transition-all ${preferences.includes(pref.label) ? 'bg-violet-50 border-violet-500 text-violet-700 shadow-sm' : 'border-slate-100 hover:bg-slate-50 text-slate-600'}`}
+                  >
+                    <pref.icon className={`w-6 h-6 ${preferences.includes(pref.label) ? 'text-violet-600' : 'text-slate-400'}`} />
+                    <span className="text-xs font-bold">{pref.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Outras Observações (Opcional)</label>
+                <input 
+                  type="text" 
+                  value={customPreference}
+                  onChange={(e) => setCustomPreference(e.target.value)}
+                  placeholder="Ex: Tenho um piano vertical, gosto de plantas..."
+                  className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                />
+              </div>
+            </section>
+
+            <Button onClick={handleGenerate} disabled={isGenerating} className="w-full py-4 text-lg">
+              {isGenerating ? <><Loader2 className="animate-spin mr-2"/> Criando Projeto...</> : 'Gerar Layout'}
+            </Button>
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in">
+             <div className="bg-violet-900 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                <div className="relative z-10">
+                  <h3 className="text-sm font-bold opacity-70 uppercase tracking-widest mb-1">Conceito do Projeto</h3>
+                  <h2 className="text-3xl font-serif mb-4">{result.conceptName}</h2>
+                  <p className="text-violet-100 text-lg leading-relaxed">{result.spatialStrategy}</p>
+                </div>
+             </div>
+
+             <div className="grid md:grid-cols-2 gap-6">
+                {result.zones.map((zone, idx) => (
+                  <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-violet-300 transition-colors">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-bold text-slate-900 text-lg">{zone.name}</h4>
+                      <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase">{zone.placement}</span>
+                    </div>
+                    <p className="text-slate-600 text-sm mb-4">{zone.description}</p>
+                    <div className="flex flex-wrap gap-2">
+                       {zone.items.map((item, i) => (
+                         <span key={i} className="text-xs bg-violet-50 text-violet-700 px-2 py-1 rounded font-medium">{item}</span>
+                       ))}
+                    </div>
+                  </div>
+                ))}
+             </div>
+
+             <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex gap-4">
+                <Lightbulb className="w-8 h-8 text-amber-500 flex-shrink-0" />
+                <div>
+                   <h4 className="font-bold text-amber-900 mb-1">Estratégia de Iluminação</h4>
+                   <p className="text-amber-800/80 text-sm">{result.lightingTips}</p>
+                </div>
+             </div>
+
+             <Button variant="secondary" onClick={() => setResult(null)} className="w-full">
+               Criar Novo Layout
+             </Button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -412,8 +591,9 @@ const VizuhalizandoApp = () => {
         setLoadingProgress(progress);
         
         // Cycle messages based on progress
-        const msgIndex = Math.min(LOADING_MESSAGES.length - 1, Math.floor((elapsed / estimatedDuration) * LOADING_MESSAGES.length));
-        setProcessingStep(LOADING_MESSAGES[msgIndex]);
+        const messagesToUse = view === 'layout-generator' ? LAYOUT_LOADING_MESSAGES : LOADING_MESSAGES;
+        const msgIndex = Math.min(messagesToUse.length - 1, Math.floor((elapsed / estimatedDuration) * messagesToUse.length));
+        setProcessingStep(messagesToUse[msgIndex]);
 
       }, 100);
 
@@ -427,7 +607,7 @@ const VizuhalizandoApp = () => {
         clearInterval(tipInterval);
       };
     }
-  }, [isProcessing]);
+  }, [isProcessing, view]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -728,6 +908,10 @@ const VizuhalizandoApp = () => {
     );
   }
 
+  if (view === 'layout-generator') {
+    return <AutoLayoutGenerator onBack={() => setView('dashboard')} />;
+  }
+
   if (view === 'dashboard') {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex flex-col pb-24 relative">
@@ -777,19 +961,39 @@ const VizuhalizandoApp = () => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800">Gerador Gemini</h3>
             </div>
-            <div 
-              onClick={() => setView('look-generator')}
-              className="group relative h-40 rounded-2xl overflow-hidden cursor-pointer shadow-md transition-transform hover:scale-[1.02]"
-            >
-              <img 
-                src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&q=80&w=800" 
-                className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110 opacity-90"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent flex flex-col justify-center p-6">
-                <h4 className="text-white font-serif text-xl">Criar Look Único</h4>
-                <div className="flex items-center text-xs text-slate-300 mt-2">
-                   <ImageIcon className="w-3 h-3 mr-1" />
-                   1K, 2K e 4K Available
+            <div className="grid grid-cols-2 gap-4">
+              <div 
+                onClick={() => setView('look-generator')}
+                className="group relative h-40 rounded-2xl overflow-hidden cursor-pointer shadow-md transition-transform hover:scale-[1.02]"
+              >
+                <img 
+                  src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&q=80&w=800" 
+                  className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110 opacity-90"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent flex flex-col justify-center p-4">
+                  <h4 className="text-white font-serif text-lg leading-tight">Looks de Moda</h4>
+                  <div className="flex items-center text-[10px] text-slate-300 mt-2">
+                     <ImageIcon className="w-3 h-3 mr-1" />
+                     4K Ready
+                  </div>
+                </div>
+              </div>
+
+              {/* Novo Botão para Layout Generator */}
+              <div 
+                onClick={() => setView('layout-generator')}
+                className="group relative h-40 rounded-2xl overflow-hidden cursor-pointer shadow-md transition-transform hover:scale-[1.02]"
+              >
+                <img 
+                  src="https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&q=80&w=800" 
+                  className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110 opacity-90"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-violet-900/80 to-transparent flex flex-col justify-center p-4">
+                  <h4 className="text-white font-serif text-lg leading-tight">Arquiteto IA</h4>
+                  <div className="flex items-center text-[10px] text-violet-200 mt-2">
+                     <Layout className="w-3 h-3 mr-1" />
+                     Novo: Layouts
+                  </div>
                 </div>
               </div>
             </div>
