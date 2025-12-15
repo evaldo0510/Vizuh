@@ -546,11 +546,10 @@ const WardrobeGridView = ({ looks, onBack, onViewDetail }: { looks: GeneratedLoo
 
 // --- Componente Principal ---
 
-const VizuhalizandoApp = () => {
-  const [view, setView] = useState<ViewState>('onboarding');
+const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
   const [userPlan, setUserPlan] = useState<PlanTier>('free');
   const [user, setUser] = useState<UserProfile>({
-    name: 'Visitante',
+    name: 'App',
     image: null,
     analyzed: false
   });
@@ -1259,4 +1258,4 @@ const VizuhalizandoApp = () => {
   return <div>Carregando...</div>;
 };
 
-export default VizuhalizandoApp;
+export default App;
