@@ -8,7 +8,7 @@ const getClient = async (requireUserKey = false) => {
       await (window as any).aistudio.openSelectKey();
     }
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY }); });
 };
 
 // Wrapper to handle API errors, specifically permissions (403), not found (404), and quota (429)
