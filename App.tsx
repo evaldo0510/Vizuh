@@ -4,13 +4,13 @@ import {
   ShoppingBag, ChevronRight, Play, CheckCircle, Lock, 
   Menu, X, TrendingUp, ScanFace, ArrowRight, Download,
   MapPin, Aperture, Eye, Unlock, Crown, Check, ShieldCheck, Dumbbell, 
-  Wand2, Image as ImageIcon, Loader2, Undo, Redo, Save, Share2
+  Wand2, Image as ImageIcon, Loader2, Undo, Redo, Save, Share2, Clock
 } from 'lucide-react';
 import { analyzeUserImage, generateFashionLook, editFashionLook, AnalysisResult } from './services/geminiService';
 
 /**
  * VIZUHALIZANDO - AI Image Consultant App
- * * Versão: 8.1 - Enhanced Editor & Features
+ * * Versão: 8.2 - UX Loading Improvements
  */
 
 // --- Tipos & Interfaces ---
@@ -57,6 +57,25 @@ interface ModalState {
   type: 'education' | 'tool' | 'edit' | null;
   data: any | null;
 }
+
+// --- Constantes de UX (Loading) ---
+const LOADING_MESSAGES = [
+  "Conectando ao estúdio criativo...",
+  "Analisando tendências atuais...",
+  "Selecionando tecidos e texturas...",
+  "Harmonizando paleta de cores...",
+  "Ajustando a iluminação virtual...",
+  "Renderizando detalhes em alta resolução...",
+  "Finalizando sua produção de moda..."
+];
+
+const STYLE_TIPS = [
+  "Dica: Cores análogas (vizinhas no círculo cromático) criam looks elegantes e alongam a silhueta.",
+  "Sabia? A 'terceira peça' (como um blazer ou colete) é o segredo para transformar um look básico.",
+  "Dica: Acessórios dourados costumam favorecer peles com subtom quente, enquanto prateados realçam as frias.",
+  "Estilo: Looks monocromáticos não são chatos! Brinque com diferentes texturas da mesma cor.",
+  "Dica: O contraste pessoal define o quão intensas suas estampas podem ser sem 'apagar' seu rosto."
+];
 
 // --- Dados dos Planos ---
 const PLANS = {
@@ -358,6 +377,10 @@ const VizuhalizandoApp = () => {
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+  // Loading UX States
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+
   const [selectedResolution, setSelectedResolution] = useState<ImageResolution>('1K');
   const [generatedLook, setGeneratedLook] = useState<GeneratedLookData | null>(null);
   const [generatedWardrobe, setGeneratedWardrobe] = useState<GeneratedLookData[]>([]);
@@ -374,6 +397,37 @@ const VizuhalizandoApp = () => {
 
   const openModal = (type: 'education' | 'tool' | 'edit', data: any) => setModal({ isOpen: true, type, data });
   const closeModal = () => setModal({ isOpen: false, type: null, data: null });
+
+  // Handle Loading UX Animation
+  useEffect(() => {
+    if (isProcessing) {
+      setLoadingProgress(0);
+      const startTime = Date.now();
+      const estimatedDuration = 25000; // 25s target for Pro model
+      
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        // Logarithmic slowdown progress curve
+        const progress = Math.min(98, (1 - Math.exp(-elapsed / 10000)) * 100);
+        setLoadingProgress(progress);
+        
+        // Cycle messages based on progress
+        const msgIndex = Math.min(LOADING_MESSAGES.length - 1, Math.floor((elapsed / estimatedDuration) * LOADING_MESSAGES.length));
+        setProcessingStep(LOADING_MESSAGES[msgIndex]);
+
+      }, 100);
+
+      // Cycle tips every 6 seconds
+      const tipInterval = setInterval(() => {
+        setCurrentTipIndex(prev => (prev + 1) % STYLE_TIPS.length);
+      }, 6000);
+
+      return () => {
+        clearInterval(interval);
+        clearInterval(tipInterval);
+      };
+    }
+  }, [isProcessing]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -392,7 +446,7 @@ const VizuhalizandoApp = () => {
     if (view === 'analyzing' && user.image && !user.analyzed) {
       const performAnalysis = async () => {
         setIsProcessing(true);
-        setProcessingStep('Iniciando Gemini 3 Pro (Thinking Mode)...');
+        // setProcessingStep handled by useEffect now
         
         try {
           // Real API Call
@@ -432,8 +486,7 @@ const VizuhalizandoApp = () => {
   const generateLook = async (objectiveId: string) => {
     setIsProcessing(true);
     const objectiveData = LOOK_OBJECTIVES.find(o => o.id === objectiveId);
-    setProcessingStep(`Gemini 3 Pro Image: Criando visual ${selectedResolution}...`);
-
+    
     try {
       // Prompt construction
       const prompt = `A fashionable person with ${user.skinTone} skin tone and ${user.season} color palette, wearing a ${objectiveData?.label} outfit consisting of harmonious items. ${createEnvironment ? `Context: ${objectiveData?.environmentContext}` : 'Simple background'}.`;
@@ -610,25 +663,47 @@ const VizuhalizandoApp = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 relative overflow-hidden">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-violet-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-fuchsia-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
         </div>
 
-        <div className="relative z-10 flex flex-col items-center text-center">
+        <div className="relative z-10 flex flex-col items-center text-center w-full max-w-sm">
           <div className="w-32 h-32 relative mb-8">
             <div className="absolute inset-0 border-4 border-slate-700 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-violet-500 rounded-full border-t-transparent animate-spin"></div>
+            <div 
+              className="absolute inset-0 border-4 border-violet-500 rounded-full border-l-transparent border-r-transparent animate-spin"
+              style={{ animationDuration: '3s' }}
+            ></div>
             {user.image && (
               <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-slate-800">
-                <img src={user.image} className="w-full h-full object-cover" />
+                <img src={user.image} className="w-full h-full object-cover opacity-80" />
               </div>
             )}
           </div>
           
           <h3 className="text-2xl font-serif text-white mb-2">
-            {view === 'analyzing' ? 'Gemini Thinking...' : 'Gerando Visual'}
+            {view === 'analyzing' ? 'Analisando Traços' : 'Gerando Visual'}
           </h3>
-          <p className="text-violet-300 animate-pulse text-sm font-medium tracking-wide">
+          
+          <div className="w-full bg-slate-800 h-1.5 rounded-full mb-4 overflow-hidden">
+             <div 
+               className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all duration-300 ease-out"
+               style={{ width: `${loadingProgress}%` }}
+             ></div>
+          </div>
+
+          <p className="text-violet-300 text-sm font-medium tracking-wide h-6 mb-8 transition-all duration-500">
             {processingStep}
           </p>
+
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700 w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex items-center gap-2 mb-2">
+               <Sparkles className="w-4 h-4 text-amber-400" />
+               <span className="text-xs font-bold text-slate-300 uppercase">Dica de Estilo</span>
+            </div>
+            <p className="text-slate-200 text-sm leading-relaxed italic">
+              "{STYLE_TIPS[currentTipIndex]}"
+            </p>
+          </div>
         </div>
       </div>
     );
