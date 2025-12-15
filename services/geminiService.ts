@@ -30,7 +30,7 @@ const executeWithRetry = async <T>(
       // Prompt user to select a key
       await (window as any).aistudio.openSelectKey();
       // Re-instantiate client with the new key (injected into env)
-      ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
       // Retry the operation
       return await operation(ai);
     }
