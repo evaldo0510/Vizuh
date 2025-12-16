@@ -194,8 +194,9 @@ export const generateLayoutSuggestion = async (
           
           DESIGN RULES:
           1. Respect the dimensions strictly.
-          2. Prioritize the client preferences above standard conventions if necessary (e.g., if 'Home Office' is asked, ensure a desk zone exists).
-          3. For "Natural Light", prioritize furniture orientation towards potential window locations.
+          2. Prioritize the client preferences above standard conventions if necessary.
+          3. If "Home Office" is requested, define a specific zone with desk placement.
+          4. For "Natural Light", prioritize furniture orientation towards potential window locations.
           
           Provide a structured JSON response.` 
         }]

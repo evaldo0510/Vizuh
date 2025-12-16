@@ -12,7 +12,7 @@ import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutS
 
 /**
  * VIZUHALIZANDO - AI Image Consultant & Spaces App
- * * Versão: 9.0 - AutoLayout Complete Suite (Validator, ProjectEditor, TechnicalView)
+ * * Versão: 9.1 - Flow Improvements (Manual Trigger)
  */
 
 // --- Tipos & Interfaces ---
@@ -862,38 +862,41 @@ const VizuhalizandoApp = () => {
     }
   };
 
-  // Perform Analysis with Gemini 3 Pro (Thinking)
-  useEffect(() => {
-    if (view === 'analyzing' && user.image && !user.analyzed) {
-      const performAnalysis = async () => {
-        setIsProcessing(true);
-        
-        try {
-          // Real API Call
-          const analysis = await analyzeUserImage(user.image!);
-          
-          setUser(prev => ({
-            ...prev,
-            analyzed: true,
-            ...analysis
-          }));
-          
-          setIsProcessing(false);
-          if (userPlan === 'free') {
-            setView('paywall');
-          } else {
-            setView('dashboard');
-          }
-        } catch (error) {
-          console.error("Analysis failed", error);
-          setProcessingStep('Erro na análise. Tentando novamente...');
-          setTimeout(() => setView('upload'), 2000);
-        }
-      };
-
-      performAnalysis();
+  // Handler for Analysis (Imperative trigger)
+  const handleAnalyze = async () => {
+    if (!user.image) return;
+    
+    setView('analyzing');
+    setIsProcessing(true);
+    
+    try {
+      // Real API Call
+      const analysis = await analyzeUserImage(user.image);
+      
+      setUser(prev => ({
+        ...prev,
+        analyzed: true,
+        ...analysis
+      }));
+      
+      setIsProcessing(false);
+      
+      // Navigate based on plan
+      if (userPlan === 'free') {
+        setView('paywall');
+      } else {
+        setView('dashboard');
+      }
+    } catch (error) {
+      console.error("Analysis failed", error);
+      setProcessingStep('Erro na análise. Tentando novamente...');
+      // Retry logic: Go back to upload after delay
+      setTimeout(() => {
+        setIsProcessing(false);
+        setView('upload');
+      }, 2000);
     }
-  }, [view, user.image, userPlan]);
+  };
 
   const handlePlanSelection = (plan: PlanTier) => {
     setUserPlan(plan);
@@ -1079,7 +1082,7 @@ const VizuhalizandoApp = () => {
 
           <div className="w-full max-w-sm mt-6">
              <Button 
-                onClick={() => setView('analyzing')} 
+                onClick={handleAnalyze} 
                 disabled={!user.image}
                 className="w-full text-lg shadow-xl shadow-violet-200"
                 variant={user.image ? "primary" : "secondary"}
