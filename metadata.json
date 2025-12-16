@@ -1,6 +1,6 @@
 {
   "name": "Vizuhalizando AI",
-  "description": "AI Image Consultant App powered by Gemini Nano Banana and Pro models.",
+  "description": "AI Image Consultant App powered by Gemini 2.5 Flash models.",
   "requestFramePermissions": [
     "camera",
     "microphone"
