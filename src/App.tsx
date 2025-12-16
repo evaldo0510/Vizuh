@@ -12,7 +12,7 @@ import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutS
 
 /**
  * VIZUHALIZANDO - AI Image Consultant & Spaces App
- * * Versão: 9.1 - Flow Improvements (Manual Trigger)
+ * * Versão: 9.3 - Image Gen Prompt Fixes
  */
 
 // --- Tipos & Interfaces ---
@@ -609,7 +609,7 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
     );
   }
 
-  return <div>Carregando...</div>;
+  return null;
 };
 
 // --- Componente PricingView ---
@@ -781,23 +781,13 @@ const VizuhalizandoApp = () => {
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
-  
   // Loading UX States
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
   const [selectedResolution, setSelectedResolution] = useState<ImageResolution>('1K');
   const [generatedLook, setGeneratedLook] = useState<GeneratedLookData | null>(null);
-  
-  // Wardrobe Persistence (LocalStorage)
-  const [generatedWardrobe, setGeneratedWardrobe] = useState<GeneratedLookData[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('vizuh_wardrobe');
-      return saved ? JSON.parse(saved) : [];
-    }
-    return [];
-  });
-
+  const [generatedWardrobe, setGeneratedWardrobe] = useState<GeneratedLookData[]>([]);
   const [isComparing, setIsComparing] = useState(false);
   const [createEnvironment, setCreateEnvironment] = useState(true);
   const [modal, setModal] = useState<ModalState>({ isOpen: false, type: null, data: null });
@@ -811,19 +801,6 @@ const VizuhalizandoApp = () => {
 
   const openModal = (type: 'education' | 'tool' | 'edit', data: any) => setModal({ isOpen: true, type, data });
   const closeModal = () => setModal({ isOpen: false, type: null, data: null });
-
-  // Persistence Effect
-  useEffect(() => {
-    localStorage.setItem('vizuh_wardrobe', JSON.stringify(generatedWardrobe));
-  }, [generatedWardrobe]);
-
-  // Tip Rotation Effect (Runs on mount and intervals, independent of loading state for Dashboard)
-  useEffect(() => {
-    const tipInterval = setInterval(() => {
-      setCurrentTipIndex(prev => (prev + 1) % STYLE_TIPS.length);
-    }, 6000);
-    return () => clearInterval(tipInterval);
-  }, []);
 
   // Handle Loading UX Animation
   useEffect(() => {
@@ -845,8 +822,14 @@ const VizuhalizandoApp = () => {
 
       }, 100);
 
+      // Cycle tips every 6 seconds
+      const tipInterval = setInterval(() => {
+        setCurrentTipIndex(prev => (prev + 1) % STYLE_TIPS.length);
+      }, 6000);
+
       return () => {
         clearInterval(interval);
+        clearInterval(tipInterval);
       };
     }
   }, [isProcessing, view]);
@@ -857,46 +840,45 @@ const VizuhalizandoApp = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setUser(prev => ({ ...prev, image: reader.result as string }));
+        setView('analyzing');
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Handler for Analysis (Imperative trigger)
-  const handleAnalyze = async () => {
-    if (!user.image) return;
-    
-    setView('analyzing');
-    setIsProcessing(true);
-    
-    try {
-      // Real API Call
-      const analysis = await analyzeUserImage(user.image);
-      
-      setUser(prev => ({
-        ...prev,
-        analyzed: true,
-        ...analysis
-      }));
-      
-      setIsProcessing(false);
-      
-      // Navigate based on plan
-      if (userPlan === 'free') {
-        setView('paywall');
-      } else {
-        setView('dashboard');
-      }
-    } catch (error) {
-      console.error("Analysis failed", error);
-      setProcessingStep('Erro na análise. Tentando novamente...');
-      // Retry logic: Go back to upload after delay
-      setTimeout(() => {
-        setIsProcessing(false);
-        setView('upload');
-      }, 2000);
+  // Perform Analysis with Gemini 3 Pro (Thinking)
+  useEffect(() => {
+    if (view === 'analyzing' && user.image && !user.analyzed) {
+      const performAnalysis = async () => {
+        setIsProcessing(true);
+        // setProcessingStep handled by useEffect now
+        
+        try {
+          // Real API Call
+          const analysis = await analyzeUserImage(user.image!);
+          
+          setUser(prev => ({
+            ...prev,
+            analyzed: true,
+            ...analysis
+          }));
+          
+          setIsProcessing(false);
+          if (userPlan === 'free') {
+            setView('paywall');
+          } else {
+            setView('dashboard');
+          }
+        } catch (error) {
+          console.error("Analysis failed", error);
+          setProcessingStep('Erro na análise. Tentando novamente...');
+          setTimeout(() => setView('upload'), 2000);
+        }
+      };
+
+      performAnalysis();
     }
-  };
+  }, [view, user.image, userPlan]);
 
   const handlePlanSelection = (plan: PlanTier) => {
     setUserPlan(plan);
@@ -990,12 +972,9 @@ const VizuhalizandoApp = () => {
   
   const saveToWardrobe = () => {
     if (generatedLook) {
-      const isAlreadySaved = generatedWardrobe.some(l => l.id === generatedLook.id);
-      if (isAlreadySaved) {
-        alert("Este look já foi salvo!");
-        return;
-      }
-      setGeneratedWardrobe(prev => [...prev, { ...generatedLook }]);
+      // Check if already exists by ID? Since ID is time based, we check if title matches roughly or just append
+      // Let's just append but give feedback
+      setGeneratedWardrobe(prev => [...prev, { ...generatedLook, id: `${generatedLook.id}-saved-${Date.now()}` }]);
       alert("Look salvo no guarda-roupa!");
     }
   };
@@ -1005,7 +984,7 @@ const VizuhalizandoApp = () => {
     try {
       await navigator.share({
         title: `Meu Look Vizuhalizando: ${generatedLook.titulo}`,
-        text: `Confira este look gerado por IA: ${generatedLook.titulo}.`,
+        text: `Confira este look gerado por IA: ${generatedLook.titulo}. ${generatedLook.detalhes}`,
         url: window.location.href
       });
     } catch (err) {
@@ -1079,17 +1058,6 @@ const VizuhalizandoApp = () => {
               </>
             )}
           </label>
-
-          <div className="w-full max-w-sm mt-6">
-             <Button 
-                onClick={handleAnalyze} 
-                disabled={!user.image}
-                className="w-full text-lg shadow-xl shadow-violet-200"
-                variant={user.image ? "primary" : "secondary"}
-             >
-                Continuar Análise
-             </Button>
-          </div>
         </div>
       </div>
     );
@@ -1147,8 +1115,9 @@ const VizuhalizandoApp = () => {
   }
 
   if (view === 'paywall') return <PaywallView onUnlock={() => setView('pricing')} />;
+
   if (view === 'pricing') return <PricingView onSelectPlan={handlePlanSelection} currentPlan={userPlan} onBack={() => setView('paywall')} />;
-  
+
   if (view === 'wardrobe-grid') {
     return (
       <WardrobeGridView 

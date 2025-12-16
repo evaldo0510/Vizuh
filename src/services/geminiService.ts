@@ -100,32 +100,44 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
   }, false);
 };
 
-// Feature: Generate Images (Gemini 3 Pro Image)
+// Feature: Generate Images
+// Uses gemini-2.5-flash-image for standard 1K generation (faster, cheaper)
+// Uses gemini-3-pro-image-preview for high-res 2K/4K generation
 export const generateFashionLook = async (
   description: string, 
   imageSize: '1K' | '2K' | '4K' = '1K'
 ): Promise<string> => {
+  const isHighRes = imageSize === '2K' || imageSize === '4K';
+  const model = isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+
   return executeWithRetry(async (ai) => {
+    const config: any = {
+      imageConfig: {
+        aspectRatio: "3:4"
+      }
+    };
+
+    // Only add imageSize for Pro model, Flash does not support it
+    if (isHighRes) {
+      config.imageConfig.imageSize = imageSize;
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: model,
       contents: {
         parts: [{ text: `Professional fashion photography, full body shot. ${description}. High fashion, photorealistic, 8k.` }]
       },
-      config: {
-        imageConfig: {
-          imageSize: imageSize,
-          aspectRatio: "3:4"
-        }
-      }
+      config: config
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+        const mimeType = part.inlineData.mimeType || 'image/png';
+        return `data:${mimeType};base64,${part.inlineData.data}`;
       }
     }
     throw new Error("No image generated");
-  }, true); // Require user key initially for Pro Image model
+  }, isHighRes); // Only require user key upfront if using Pro
 };
 
 // Feature: Text-based Image Editing (Gemini 2.5 Flash Image - Nano Banana)
@@ -146,7 +158,8 @@ export const editFashionLook = async (base64Image: string, prompt: string): Prom
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+        const mimeType = part.inlineData.mimeType || 'image/png';
+        return `data:${mimeType};base64,${part.inlineData.data}`;
       }
     }
     throw new Error("Failed to edit image");
@@ -214,14 +227,15 @@ export const generateLayoutSuggestion = async (
   }, false);
 };
 
-// Feature: Generate Interior Render (Gemini 3 Pro Image)
+// Feature: Generate Interior Render
+// Uses gemini-2.5-flash-image for reliability
 export const generateInteriorRender = async (
   description: string,
   roomType: string
 ): Promise<string> => {
   return executeWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: {
         parts: [{ 
           text: `Interior design render. ${roomType}. ${description}. 
@@ -230,7 +244,7 @@ export const generateInteriorRender = async (
       },
       config: {
         imageConfig: {
-          imageSize: '1K',
+          // imageSize not supported on Flash, defaults to 1024x1024 approx
           aspectRatio: "16:9"
         }
       }
@@ -238,9 +252,10 @@ export const generateInteriorRender = async (
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+        const mimeType = part.inlineData.mimeType || 'image/png';
+        return `data:${mimeType};base64,${part.inlineData.data}`;
       }
     }
     throw new Error("No image generated");
-  }, true);
+  }, false);
 };
