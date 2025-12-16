@@ -5,13 +5,14 @@ import {
   Menu, X, TrendingUp, ScanFace, ArrowRight, Download,
   MapPin, Aperture, Eye, Unlock, Crown, Check, ShieldCheck, Dumbbell, 
   Wand2, Image as ImageIcon, Loader2, Undo, Redo, Save, Share2, Clock,
-  Layout, Sun, Monitor, Sofa, Grid3X3, Lightbulb, MessageSquare
+  Layout, Sun, Monitor, Sofa, Grid3X3, Lightbulb, MessageSquare, Plus,
+  Minus, Layers, Scissors, Box
 } from 'lucide-react';
-import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutSuggestion, AnalysisResult, LayoutResult } from './services/geminiService';
+import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutSuggestion, generateInteriorRender, AnalysisResult, LayoutResult } from './services/geminiService';
 
 /**
  * VIZUHALIZANDO - AI Image Consultant & Spaces App
- * * Versão: 8.6 - UX Improvements: Upload Flow
+ * * Versão: 9.0 - AutoLayout Complete Suite (Validator, ProjectEditor, TechnicalView)
  */
 
 // --- Tipos & Interfaces ---
@@ -221,13 +222,30 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
 
 // --- Componente AutoLayoutGenerator ---
 const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
+  const [step, setStep] = useState<'input' | 'project-editor'>('input');
+  
+  // DimensionExtractor State & Logic
   const [roomType, setRoomType] = useState('Sala de Estar');
   const [width, setWidth] = useState(4);
   const [length, setLength] = useState(5);
+  const [errors, setErrors] = useState<{width?: string, length?: string}>({});
+  
+  // Preferences
   const [preferences, setPreferences] = useState<string[]>([]);
   const [customPreference, setCustomPreference] = useState('');
+  
+  // Result
   const [result, setResult] = useState<LayoutResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // ProjectEditor State (Render & Zoom)
+  const [renders, setRenders] = useState<string[]>([]);
+  const [selectedRenderIndex, setSelectedRenderIndex] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isRendering, setIsRendering] = useState(false);
+
+  // TechnicalView State
+  const [activeTab, setActiveTab] = useState<'layout' | 'technical'>('layout');
 
   const availablePreferences = [
     { id: 'luz_natural', label: 'Priorizar Luz Natural', icon: Sun },
@@ -238,6 +256,18 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
     { id: 'leitura', label: 'Canto de Leitura', icon: Sofa },
   ];
 
+  const validateDimensions = (w: number, l: number) => {
+    const errs: any = {};
+    if (w <= 0) errs.width = "A largura deve ser positiva.";
+    else if (w > 50) errs.width = "Largura excede limite razoável (50m).";
+    
+    if (l <= 0) errs.length = "O comprimento deve ser positivo.";
+    else if (l > 50) errs.length = "Comprimento excede limite razoável (50m).";
+    
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const togglePreference = (pref: string) => {
     setPreferences(prev => 
       prev.includes(pref) ? prev.filter(p => p !== pref) : [...prev, pref]
@@ -245,6 +275,8 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
   };
 
   const handleGenerate = async () => {
+    if (!validateDimensions(width, length)) return;
+
     setIsGenerating(true);
     try {
       const allPrefs = [...preferences];
@@ -254,6 +286,11 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
       
       const layout = await generateLayoutSuggestion(roomType, width, length, allPrefs);
       setResult(layout);
+      setStep('project-editor');
+      // Reset renders when generating new project
+      setRenders([]);
+      setSelectedRenderIndex(0);
+      setActiveTab('layout');
     } catch (e) {
       alert("Erro ao gerar layout. Tente novamente.");
     } finally {
@@ -261,18 +298,40 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <div className="p-6 bg-white shadow-sm flex items-center border-b border-slate-100">
-        <button onClick={onBack} className="mr-4"><ArrowRight className="w-6 h-6 rotate-180" /></button>
-        <div>
-          <h2 className="text-xl font-serif text-slate-900">Arquiteto IA</h2>
-          <p className="text-xs text-slate-500">AutoLayout com Gemini 2.5 Flash</p>
-        </div>
-      </div>
+  const handleCreateRender = async () => {
+    if (!result) return;
+    setIsRendering(true);
+    try {
+      // Create a specific prompt for rendering based on layout
+      const prompt = `Modern interior design of a ${roomType}. Concept: ${result.conceptName}. Features: ${result.spatialStrategy}. Colors compatible with concept.`;
+      const renderUrl = await generateInteriorRender(prompt, roomType);
+      setRenders(prev => [...prev, renderUrl]);
+      setSelectedRenderIndex(prev => renders.length); // Select the new one
+      setZoomLevel(1); // Reset zoom
+    } catch (e) {
+      alert("Erro ao gerar renderização.");
+    } finally {
+      setIsRendering(false);
+    }
+  };
 
-      <div className="flex-1 p-6 overflow-y-auto">
-        {!result ? (
+  const adjustZoom = (delta: number) => {
+    setZoomLevel(prev => Math.min(Math.max(1, prev + delta), 3));
+  };
+
+  // --- DimensionExtractor & Preference UI ---
+  if (step === 'input') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="p-6 bg-white shadow-sm flex items-center border-b border-slate-100">
+          <button onClick={onBack} className="mr-4"><ArrowRight className="w-6 h-6 rotate-180" /></button>
+          <div>
+            <h2 className="text-xl font-serif text-slate-900">Arquiteto IA</h2>
+            <p className="text-xs text-slate-500">AutoLayout com Gemini 2.5 Flash</p>
+          </div>
+        </div>
+
+        <div className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
             
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -297,11 +356,31 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Largura (m)</label>
-                    <input type="number" value={width} onChange={e => setWidth(Number(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl" />
+                    <input 
+                      type="number" 
+                      value={width} 
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setWidth(val);
+                        validateDimensions(val, length);
+                      }} 
+                      className={`w-full p-3 border rounded-xl ${errors.width ? 'border-red-500 bg-red-50' : 'border-slate-200'}`} 
+                    />
+                    {errors.width && <p className="text-red-500 text-xs mt-1">{errors.width}</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Comprimento (m)</label>
-                    <input type="number" value={length} onChange={e => setLength(Number(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl" />
+                    <input 
+                      type="number" 
+                      value={length} 
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setLength(val);
+                        validateDimensions(width, val);
+                      }} 
+                      className={`w-full p-3 border rounded-xl ${errors.length ? 'border-red-500 bg-red-50' : 'border-slate-200'}`} 
+                    />
+                    {errors.length && <p className="text-red-500 text-xs mt-1">{errors.length}</p>}
                   </div>
                 </div>
               </div>
@@ -342,50 +421,195 @@ const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
               {isGenerating ? <><Loader2 className="animate-spin mr-2"/> Criando Projeto...</> : 'Gerar Layout'}
             </Button>
           </div>
-        ) : (
-          <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in">
-             <div className="bg-violet-900 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                <div className="relative z-10">
-                  <h3 className="text-sm font-bold opacity-70 uppercase tracking-widest mb-1">Conceito do Projeto</h3>
-                  <h2 className="text-3xl font-serif mb-4">{result.conceptName}</h2>
-                  <p className="text-violet-100 text-lg leading-relaxed">{result.spatialStrategy}</p>
-                </div>
-             </div>
+        </div>
+      </div>
+    );
+  }
 
-             <div className="grid md:grid-cols-2 gap-6">
-                {result.zones.map((zone, idx) => (
-                  <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-violet-300 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-bold text-slate-900 text-lg">{zone.name}</h4>
-                      <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase">{zone.placement}</span>
+  // --- Project Editor (Results & Render) & TechnicalView ---
+  if (step === 'project-editor' && result) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="p-4 bg-white shadow-sm flex items-center justify-between z-10">
+          <button onClick={() => setStep('input')} className="p-2 hover:bg-slate-100 rounded-full">
+             <ArrowRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h2 className="text-lg font-serif font-bold">{result.conceptName}</h2>
+          <div className="flex bg-slate-100 rounded-lg p-1">
+             <button 
+               onClick={() => setActiveTab('layout')}
+               className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${activeTab === 'layout' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+             >
+               Projeto
+             </button>
+             <button 
+               onClick={() => setActiveTab('technical')}
+               className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${activeTab === 'technical' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+             >
+               Técnico
+             </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'layout' ? (
+            <div className="max-w-4xl mx-auto p-6 space-y-6">
+               
+               {/* 3D Render Section with Project History & Zoom */}
+               <section className="bg-slate-900 rounded-3xl overflow-hidden shadow-2xl relative min-h-[400px]">
+                 {renders.length > 0 ? (
+                   <div className="relative w-full h-[500px] overflow-hidden group">
+                     <div 
+                        className="w-full h-full transition-transform duration-200 ease-out"
+                        style={{ transform: `scale(${zoomLevel})` }}
+                     >
+                       <img 
+                         src={renders[selectedRenderIndex]} 
+                         alt="Render 3D" 
+                         className="w-full h-full object-cover"
+                       />
+                     </div>
+                     
+                     {/* Zoom Controls */}
+                     <div className="absolute top-4 right-4 flex flex-col gap-2 bg-black/50 backdrop-blur-md rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => adjustZoom(0.5)} className="text-white hover:text-amber-400"><Plus className="w-5 h-5"/></button>
+                        <span className="text-white text-xs text-center">{Math.round(zoomLevel * 100)}%</span>
+                        <button onClick={() => adjustZoom(-0.5)} className="text-white hover:text-amber-400"><Minus className="w-5 h-5"/></button>
+                     </div>
+
+                     {/* Variation Selector (History) */}
+                     <div className="absolute bottom-4 left-4 right-4 flex gap-3 overflow-x-auto p-2 scrollbar-hide">
+                        {renders.map((r, idx) => (
+                          <button 
+                            key={idx}
+                            onClick={() => { setSelectedRenderIndex(idx); setZoomLevel(1); }}
+                            className={`w-16 h-16 rounded-lg overflow-hidden border-2 flex-shrink-0 ${selectedRenderIndex === idx ? 'border-amber-500' : 'border-white/30'}`}
+                          >
+                            <img src={r} className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                        <button 
+                           onClick={handleCreateRender}
+                           disabled={isRendering}
+                           className="w-16 h-16 rounded-lg border-2 border-dashed border-white/30 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white flex-shrink-0"
+                        >
+                           {isRendering ? <Loader2 className="animate-spin w-5 h-5"/> : <Plus className="w-6 h-6"/>}
+                        </button>
+                     </div>
+                   </div>
+                 ) : (
+                   <div className="flex flex-col items-center justify-center h-[400px] text-white p-8 text-center">
+                      <Box className="w-16 h-16 text-slate-700 mb-4" />
+                      <h3 className="text-xl font-serif mb-2">Visualização 3D</h3>
+                      <p className="text-slate-400 mb-6 max-w-sm">Gere renderizações fotorealistas do seu layout com Gemini 3 Pro.</p>
+                      <Button variant="premium" onClick={handleCreateRender} disabled={isRendering}>
+                        {isRendering ? <><Loader2 className="animate-spin mr-2"/> Renderizando...</> : 'Gerar Render 3D'}
+                      </Button>
+                   </div>
+                 )}
+               </section>
+
+               <div className="bg-violet-900 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                  <div className="relative z-10">
+                    <h3 className="text-sm font-bold opacity-70 uppercase tracking-widest mb-1">Estratégia</h3>
+                    <p className="text-violet-100 text-lg leading-relaxed">{result.spatialStrategy}</p>
+                  </div>
+               </div>
+
+               <div className="grid md:grid-cols-2 gap-6">
+                  {result.zones.map((zone, idx) => (
+                    <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-violet-300 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-bold text-slate-900 text-lg">{zone.name}</h4>
+                        <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase">{zone.placement}</span>
+                      </div>
+                      <p className="text-slate-600 text-sm mb-4">{zone.description}</p>
+                      <div className="flex flex-wrap gap-2">
+                         {zone.items.map((item, i) => (
+                           <span key={i} className="text-xs bg-violet-50 text-violet-700 px-2 py-1 rounded font-medium">{item}</span>
+                         ))}
+                      </div>
                     </div>
-                    <p className="text-slate-600 text-sm mb-4">{zone.description}</p>
-                    <div className="flex flex-wrap gap-2">
-                       {zone.items.map((item, i) => (
-                         <span key={i} className="text-xs bg-violet-50 text-violet-700 px-2 py-1 rounded font-medium">{item}</span>
-                       ))}
+                  ))}
+               </div>
+
+               <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex gap-4">
+                  <Lightbulb className="w-8 h-8 text-amber-500 flex-shrink-0" />
+                  <div>
+                     <h4 className="font-bold text-amber-900 mb-1">Estratégia de Iluminação</h4>
+                     <p className="text-amber-800/80 text-sm">{result.lightingTips}</p>
+                  </div>
+               </div>
+            </div>
+          ) : (
+            // Technical View - Cutting Plan Visualization
+            <div className="max-w-4xl mx-auto p-6 space-y-6 animate-in fade-in">
+              <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                   <h3 className="text-xl font-bold text-slate-900 flex items-center">
+                     <Scissors className="w-5 h-5 mr-2 text-violet-600" />
+                     Plano de Corte (Estimativa)
+                   </h3>
+                   <span className="text-xs font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-500">Chapa MDF 2.75 x 1.83m</span>
+                </div>
+                
+                {/* Simulated Cutting Plan Visualization */}
+                <div className="aspect-video bg-slate-800 rounded-lg p-4 relative overflow-hidden border-4 border-slate-300">
+                  <div className="absolute top-2 right-2 text-[10px] text-white/50">Simulação Visual</div>
+                  <div className="w-full h-full grid grid-cols-4 grid-rows-3 gap-1">
+                     {/* Generating mock parts based on zones */}
+                     {result.zones.flatMap(z => z.items).slice(0, 10).map((item, idx) => {
+                       // Random span logic for visual variety
+                       const colSpan = idx % 3 === 0 ? 'col-span-2' : 'col-span-1';
+                       const rowSpan = idx % 2 === 0 ? 'row-span-1' : 'row-span-1';
+                       return (
+                         <div key={idx} className={`${colSpan} ${rowSpan} bg-amber-200/90 border border-amber-400/50 flex items-center justify-center p-2 relative group`}>
+                            <span className="text-[10px] font-bold text-amber-900 truncate w-full text-center">{item}</span>
+                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs">
+                              {Math.floor(Math.random() * 100 + 50)}cm x {Math.floor(Math.random() * 50 + 30)}cm
+                            </div>
+                         </div>
+                       )
+                     })}
+                     <div className="col-span-1 row-span-1 border-2 border-dashed border-white/20 flex items-center justify-center">
+                        <span className="text-xs text-white/30">Sobra</span>
+                     </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-xl">
+                    <h4 className="font-bold text-slate-700 text-sm mb-2">Lista de Peças Sugerida</h4>
+                    <ul className="text-xs space-y-2 text-slate-600">
+                      {result.zones.flatMap(z => z.items).slice(0, 6).map((item, i) => (
+                        <li key={i} className="flex justify-between border-b border-slate-200 pb-1">
+                          <span>{item}</span>
+                          <span className="font-mono">1 un.</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl">
+                    <h4 className="font-bold text-slate-700 text-sm mb-2">Aproveitamento</h4>
+                    <div className="flex items-end gap-2 mb-1">
+                      <span className="text-3xl font-bold text-violet-600">~85%</span>
+                      <span className="text-xs text-slate-500 mb-1">da chapa utilizada</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                      <div className="bg-violet-600 h-full w-[85%]"></div>
                     </div>
                   </div>
-                ))}
-             </div>
-
-             <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex gap-4">
-                <Lightbulb className="w-8 h-8 text-amber-500 flex-shrink-0" />
-                <div>
-                   <h4 className="font-bold text-amber-900 mb-1">Estratégia de Iluminação</h4>
-                   <p className="text-amber-800/80 text-sm">{result.lightingTips}</p>
                 </div>
-             </div>
-
-             <Button variant="secondary" onClick={() => setResult(null)} className="w-full">
-               Criar Novo Layout
-             </Button>
-          </div>
-        )}
+              </section>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <div>Carregando...</div>;
 };
 
 // --- Componente PricingView ---

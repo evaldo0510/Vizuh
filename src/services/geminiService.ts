@@ -194,9 +194,8 @@ export const generateLayoutSuggestion = async (
           
           DESIGN RULES:
           1. Respect the dimensions strictly.
-          2. Prioritize the client preferences above standard conventions if necessary.
-          3. If "Home Office" is requested, define a specific zone with desk placement.
-          4. For "Natural Light", prioritize furniture orientation towards potential window locations.
+          2. Prioritize the client preferences above standard conventions if necessary (e.g., if 'Home Office' is asked, ensure a desk zone exists).
+          3. For "Natural Light", prioritize furniture orientation towards potential window locations.
           
           Provide a structured JSON response.` 
         }]
@@ -212,4 +211,35 @@ export const generateLayoutSuggestion = async (
     }
     throw new Error("Failed to generate layout");
   }, false);
+};
+
+// Feature: Generate Interior Render (Gemini 3 Pro Image)
+export const generateInteriorRender = async (
+  description: string,
+  roomType: string
+): Promise<string> => {
+  return executeWithRetry(async (ai) => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ 
+          text: `Interior design render. ${roomType}. ${description}. 
+          Photorealistic, architectural visualization, 8k resolution, cinematic lighting, wide angle.` 
+        }]
+      },
+      config: {
+        imageConfig: {
+          imageSize: '1K',
+          aspectRatio: "16:9"
+        }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image generated");
+  }, true);
 };
