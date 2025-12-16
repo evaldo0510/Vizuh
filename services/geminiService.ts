@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 
 // Helper to get the correct client instance
@@ -58,7 +59,7 @@ export interface LayoutResult {
   lightingTips: string;
 }
 
-// Feature: Analyze Images (Gemini 3 Pro + Thinking)
+// Feature: Analyze Images (Switched to Gemini 2.5 Flash for better quota)
 export const analyzeUserImage = async (base64Image: string): Promise<AnalysisResult> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
 
@@ -80,7 +81,7 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
 
   return executeWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
@@ -89,8 +90,7 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
       },
       config: {
         responseMimeType: 'application/json',
-        responseSchema: schema,
-        thinkingConfig: { thinkingBudget: 32768 }
+        responseSchema: schema
       }
     });
 
@@ -101,20 +101,20 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
   }, false);
 };
 
-// Feature: Generate Images (Gemini 3 Pro Image)
+// Feature: Generate Images (Switched to Gemini 2.5 Flash Image)
 export const generateFashionLook = async (
   description: string, 
   imageSize: '1K' | '2K' | '4K' = '1K'
 ): Promise<string> => {
   return executeWithRetry(async (ai) => {
+    // gemini-2.5-flash-image does not support imageSize, but it avoids 429 quota errors from pro model
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `Professional fashion photography, full body shot. ${description}. High fashion, photorealistic, 8k.` }]
+        parts: [{ text: `Professional fashion photography, full body shot. ${description}. High fashion, photorealistic.` }]
       },
       config: {
         imageConfig: {
-          imageSize: imageSize,
           aspectRatio: "3:4"
         }
       }
@@ -126,23 +126,22 @@ export const generateFashionLook = async (
       }
     }
     throw new Error("No image generated");
-  }, true); // Require user key initially for Pro Image model
+  }, false); 
 };
 
-// Feature: Text-based Image Editing (Gemini 2.5 Flash Image - Nano Banana)
+// Feature: Text-based Image Editing (Gemini 2.5 Flash Image)
 export const editFashionLook = async (base64Image: string, prompt: string): Promise<string> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
 
   return executeWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', // Nano Banana
+      model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/png', data: cleanBase64 } },
           { text: prompt }
         ]
       }
-      // Note: responseMimeType is NOT supported for nano banana series
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {

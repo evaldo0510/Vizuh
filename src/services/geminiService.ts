@@ -1,6 +1,8 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
 
-// Helper to get the correct client instance
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { AnalysisResult, UserMetrics } from "../types";
+
+// Helper: Get Client with optional key check
 const getClient = async (requireUserKey = false) => {
   if (requireUserKey && (window as any).aistudio) {
     const hasKey = await (window as any).aistudio.hasSelectedApiKey();
@@ -11,8 +13,7 @@ const getClient = async (requireUserKey = false) => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-// Wrapper to handle API errors, specifically permissions (403), not found (404), and quota (429)
-// by prompting for a new key and retrying.
+// Helper: Retry Wrapper for 429/403/404 errors
 const executeWithRetry = async <T>(
   operation: (ai: GoogleGenAI) => Promise<T>,
   requireUserKeyInitial = false
@@ -21,61 +22,94 @@ const executeWithRetry = async <T>(
   try {
     return await operation(ai);
   } catch (error: any) {
-    // Check for 403 Permission Denied or 404 Not Found (often key/project related)
-    const isPermissionError = error.message?.includes('403') || error.status === 403 || error.message?.includes('Permission denied') || error.message?.includes('PERMISSION_DENIED');
-    const isNotFoundError = error.message?.includes('not found') || error.status === 404 || error.message?.includes('Requested entity was not found');
+    console.error("Gemini API Error:", error);
+    
+    // Check for 403 (Permission), 404 (Not Found - often key related), 429 (Quota)
+    const isPermissionError = error.message?.includes('403') || error.status === 403 || error.message?.includes('Permission denied');
+    const isNotFoundError = error.message?.includes('404') || error.status === 404 || error.message?.includes('not found') || error.message?.includes('Requested entity was not found');
     const isQuotaError = error.message?.includes('429') || error.status === 429 || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED');
     
     if ((isPermissionError || isNotFoundError || isQuotaError) && (window as any).aistudio) {
-      // Prompt user to select a key
+      console.log("Attempting to refresh API key due to error...");
       await (window as any).aistudio.openSelectKey();
-      // Re-instantiate client with the new key (injected into env)
+      // Re-instantiate with new key
       ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Retry the operation
+      // Retry
       return await operation(ai);
     }
     throw error;
   }
 };
 
-export interface AnalysisResult {
-  skinTone: string;
-  faceShape: string;
-  season: string;
-  contrast: 'Baixo' | 'Médio' | 'Alto';
-  traits: string[];
-}
-
-export interface LayoutResult {
-  conceptName: string;
-  spatialStrategy: string;
-  zones: Array<{
-    name: string;
-    description: string;
-    items: string[];
-    placement: string;
-  }>;
-  lightingTips: string;
-}
-
-// Feature: Analyze Images (Gemini 2.5 Flash)
-export const analyzeUserImage = async (base64Image: string): Promise<AnalysisResult> => {
+export const analyzeImageWithGemini = async (
+  base64Image: string,
+  metrics: UserMetrics,
+  environment: string
+): Promise<AnalysisResult> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
 
   const schema: Schema = {
     type: Type.OBJECT,
     properties: {
-      skinTone: { type: Type.STRING, description: "Skin undertone (Cool, Warm, Neutral)" },
-      faceShape: { type: Type.STRING, description: "Face shape (Oval, Round, Square, Heart, etc)" },
-      season: { 
-        type: Type.STRING, 
-        enum: ['Inverno Brilhante', 'Verão Suave', 'Outono Profundo', 'Primavera Clara'],
-        description: "Seasonal Color Analysis"
+      visagismo: {
+        type: Type.OBJECT,
+        properties: {
+          cabelo: {
+            type: Type.OBJECT,
+            properties: {
+              estilo: { type: Type.STRING },
+              detalhes: { type: Type.STRING }
+            }
+          },
+          barba_ou_make: {
+            type: Type.OBJECT,
+            properties: {
+              estilo: { type: Type.STRING },
+              detalhes: { type: Type.STRING }
+            }
+          }
+        }
       },
-      contrast: { type: Type.STRING, enum: ['Baixo', 'Médio', 'Alto'] },
-      traits: { type: Type.ARRAY, items: { type: Type.STRING }, description: "3 key facial features" }
+      biotipo: { type: Type.STRING },
+      tom_pele_detectado: { 
+        type: Type.STRING, 
+        enum: ['Quente', 'Frio', 'Neutro', 'Oliva'] 
+      },
+      analise_pele: { type: Type.STRING },
+      paleta_cores: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            hex: { type: Type.STRING },
+            nome: { type: Type.STRING }
+          }
+        }
+      },
+      formato_rosto_detalhado: { type: Type.STRING },
+      sugestoes_roupa: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            titulo: { type: Type.STRING },
+            detalhes: { type: Type.STRING },
+            ocasiao: { type: Type.STRING },
+            components: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  peca: { type: Type.STRING },
+                  loja: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
     },
-    required: ["skinTone", "faceShape", "season", "contrast", "traits"]
+    required: ["visagismo", "biotipo", "tom_pele_detectado", "analise_pele", "paleta_cores", "sugestoes_roupa", "formato_rosto_detalhado"]
   };
 
   return executeWithRetry(async (ai) => {
@@ -84,135 +118,21 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
-          { text: "Analyze this person's features for a fashion consultation. Determine face shape, skin tone, contrast level, and seasonal color palette." }
-        ]
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: schema,
-      }
-    });
-
-    if (response.text) {
-      return JSON.parse(response.text) as AnalysisResult;
-    }
-    throw new Error("Failed to analyze image");
-  }, false);
-};
-
-// Feature: Generate Images
-// Uses gemini-2.5-flash-image for standard 1K generation (faster, cheaper)
-// Uses gemini-3-pro-image-preview for high-res 2K/4K generation
-export const generateFashionLook = async (
-  description: string, 
-  imageSize: '1K' | '2K' | '4K' = '1K'
-): Promise<string> => {
-  const isHighRes = imageSize === '2K' || imageSize === '4K';
-  const model = isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-
-  return executeWithRetry(async (ai) => {
-    const config: any = {
-      imageConfig: {
-        aspectRatio: "3:4"
-      }
-    };
-
-    // Only add imageSize for Pro model, Flash does not support it
-    if (isHighRes) {
-      config.imageConfig.imageSize = imageSize;
-    }
-
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: {
-        parts: [{ text: `Professional fashion photography, full body shot. ${description}. High fashion, photorealistic, 8k.` }]
-      },
-      config: config
-    });
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        const mimeType = part.inlineData.mimeType || 'image/png';
-        return `data:${mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    throw new Error("No image generated");
-  }, isHighRes); // Only require user key upfront if using Pro
-};
-
-// Feature: Text-based Image Editing (Gemini 2.5 Flash Image - Nano Banana)
-export const editFashionLook = async (base64Image: string, prompt: string): Promise<string> => {
-  const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-
-  return executeWithRetry(async (ai) => {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', // Nano Banana
-      contents: {
-        parts: [
-          { inlineData: { mimeType: 'image/png', data: cleanBase64 } },
-          { text: prompt }
-        ]
-      }
-      // Note: responseMimeType is NOT supported for nano banana series
-    });
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        const mimeType = part.inlineData.mimeType || 'image/png';
-        return `data:${mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    throw new Error("Failed to edit image");
-  }, false);
-};
-
-// Feature: Interior Layout Generator (Gemini 2.5 Flash)
-export const generateLayoutSuggestion = async (
-  roomType: string,
-  width: number,
-  length: number,
-  preferences: string[]
-): Promise<LayoutResult> => {
-  const schema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      conceptName: { type: Type.STRING },
-      spatialStrategy: { type: Type.STRING, description: "How the preferences guided the layout choice" },
-      zones: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            description: { type: Type.STRING },
-            items: { type: Type.ARRAY, items: { type: Type.STRING } },
-            placement: { type: Type.STRING, description: "Where in the room (e.g., Near window, North wall)" }
+          { 
+            text: `Analyze this person for a complete fashion and visagism consultation.
+            User Metrics: Height ${metrics.height || 'unknown'}m, Weight ${metrics.weight || 'unknown'}kg.
+            Target Environment/Style: ${environment}.
+            
+            Provide:
+            1. Visagism (Hair, Makeup/Beard suggestions).
+            2. Biotype analysis.
+            3. Skin Tone (Quente, Frio, Neutro, Oliva) and explanation.
+            4. Seasonal Color Palette (5-6 colors).
+            5. 4 distinct outfit suggestions suitable for the environment and biotype.
+            6. Detailed Face Shape analysis.
+            `
           }
-        }
-      },
-      lightingTips: { type: Type.STRING }
-    },
-    required: ["conceptName", "spatialStrategy", "zones", "lightingTips"]
-  };
-
-  return executeWithRetry(async (ai) => {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [{ 
-          text: `Act as a world-class Interior Architect. Design an optimal layout for a ${roomType} (${width}m x ${length}m).
-          
-          CLIENT PREFERENCES:
-          ${preferences.length > 0 ? preferences.map(p => `- ${p}`).join('\n') : '- Optimize for functionality and flow.'}
-          
-          DESIGN RULES:
-          1. Respect the dimensions strictly.
-          2. Prioritize the client preferences above standard conventions if necessary.
-          3. If "Home Office" is requested, define a specific zone with desk placement.
-          4. For "Natural Light", prioritize furniture orientation towards potential window locations.
-          
-          Provide a structured JSON response.` 
-        }]
+        ]
       },
       config: {
         responseMimeType: 'application/json',
@@ -221,41 +141,45 @@ export const generateLayoutSuggestion = async (
     });
 
     if (response.text) {
-      return JSON.parse(response.text) as LayoutResult;
+      return JSON.parse(response.text) as AnalysisResult;
     }
-    throw new Error("Failed to generate layout");
-  }, false);
+    throw new Error("Failed to analyze image");
+  });
 };
 
-// Feature: Generate Interior Render
-// Uses gemini-2.5-flash-image for reliability
-export const generateInteriorRender = async (
-  description: string,
-  roomType: string
+export const generateVisualEdit = async (
+  base64Image: string,
+  type: string,
+  prompt: string,
+  visagismDesc: string,
+  context: { biotype: string; palette: string },
+  refinement?: string
 ): Promise<string> => {
+  const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+
   return executeWithRetry(async (ai) => {
+    const fullPrompt = `Fashion Editor. 
+    Task: ${prompt}. 
+    Visagism details to preserve/enhance: ${visagismDesc}.
+    User Biotype: ${context.biotype}.
+    ${refinement ? `Refinement instructions: ${refinement}` : ''}
+    Output: High quality, photorealistic image maintaining the user's face identity.`;
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ 
-          text: `Interior design render. ${roomType}. ${description}. 
-          Photorealistic, architectural visualization, 8k resolution, cinematic lighting, wide angle.` 
-        }]
-      },
-      config: {
-        imageConfig: {
-          // imageSize not supported on Flash, defaults to 1024x1024 approx
-          aspectRatio: "16:9"
-        }
+        parts: [
+          { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+          { text: fullPrompt }
+        ]
       }
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        const mimeType = part.inlineData.mimeType || 'image/png';
-        return `data:${mimeType};base64,${part.inlineData.data}`;
+        return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("No image generated");
-  }, false);
+    throw new Error("Failed to generate visual edit");
+  });
 };
