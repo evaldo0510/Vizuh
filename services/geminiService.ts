@@ -8,7 +8,8 @@ const getClient = async (requireUserKey = false) => {
       await (window as any).aistudio.openSelectKey();
     }
   }
-  return new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
 
 // Wrapper to handle API errors, specifically permissions (403), not found (404), and quota (429)
 // by prompting for a new key and retrying.
@@ -29,7 +30,7 @@ const executeWithRetry = async <T>(
       // Prompt user to select a key
       await (window as any).aistudio.openSelectKey();
       // Re-instantiate client with the new key (injected into env)
-      ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+      ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       // Retry the operation
       return await operation(ai);
     }

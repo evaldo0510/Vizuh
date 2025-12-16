@@ -11,7 +11,7 @@ import { analyzeUserImage, generateFashionLook, editFashionLook, generateLayoutS
 
 /**
  * VIZUHALIZANDO - AI Image Consultant & Spaces App
- * * Versão: 8.4 - AutoLayout Custom Preferences
+ * * Versão: 8.6 - UX Improvements: Upload Flow
  */
 
 // --- Tipos & Interfaces ---
@@ -80,11 +80,12 @@ const LAYOUT_LOADING_MESSAGES = [
 ];
 
 const STYLE_TIPS = [
-  "Dica: Cores análogas (vizinhas no círculo cromático) criam looks elegantes e alongam a silhueta.",
-  "Sabia? A 'terceira peça' (como um blazer ou colete) é o segredo para transformar um look básico.",
-  "Dica: Acessórios dourados costumam favorecer peles com subtom quente, enquanto prateados realçam as frias.",
-  "Estilo: Looks monocromáticos não são chatos! Brinque com diferentes texturas da mesma cor.",
-  "Dica: O contraste pessoal define o quão intensas suas estampas podem ser sem 'apagar' seu rosto."
+  "🎨 Colorimetria: Cores análogas (vizinhas no círculo cromático) criam looks elegantes e alongam a silhueta.",
+  "🧥 Estilo: A 'terceira peça' (como um blazer ou colete) é o segredo para transformar um look básico em sofisticado.",
+  "✨ Acessórios: Dourados favorecem peles com subtom quente, enquanto prateados realçam as frias.",
+  "👗 Texturas: Looks monocromáticos ganham vida quando você mistura diferentes texturas da mesma cor.",
+  "👁️ Contraste: Respeitar seu contraste pessoal (diferença entre cor de cabelo, pele e olhos) harmoniza o rosto.",
+  "📏 Proporção: Se usar uma peça larga em cima, tente algo mais justo embaixo para equilibrar o visual."
 ];
 
 // --- Dados dos Planos ---
@@ -218,7 +219,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
   );
 };
 
-// --- Componente AutoLayoutGenerator (Nova Feature) ---
+// --- Componente AutoLayoutGenerator ---
 const AutoLayoutGenerator = ({ onBack }: { onBack: () => void }) => {
   const [roomType, setRoomType] = useState('Sala de Estar');
   const [width, setWidth] = useState(4);
@@ -546,22 +547,33 @@ const WardrobeGridView = ({ looks, onBack, onViewDetail }: { looks: GeneratedLoo
 
 // --- Componente Principal ---
 
-const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
+const VizuhalizandoApp = () => {
+  const [view, setView] = useState<ViewState>('onboarding');
   const [userPlan, setUserPlan] = useState<PlanTier>('free');
   const [user, setUser] = useState<UserProfile>({
-    name: 'App',
+    name: 'Visitante',
     image: null,
     analyzed: false
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+  
   // Loading UX States
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
   const [selectedResolution, setSelectedResolution] = useState<ImageResolution>('1K');
   const [generatedLook, setGeneratedLook] = useState<GeneratedLookData | null>(null);
-  const [generatedWardrobe, setGeneratedWardrobe] = useState<GeneratedLookData[]>([]);
+  
+  // Wardrobe Persistence (LocalStorage)
+  const [generatedWardrobe, setGeneratedWardrobe] = useState<GeneratedLookData[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('vizuh_wardrobe');
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
+
   const [isComparing, setIsComparing] = useState(false);
   const [createEnvironment, setCreateEnvironment] = useState(true);
   const [modal, setModal] = useState<ModalState>({ isOpen: false, type: null, data: null });
@@ -575,6 +587,19 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
 
   const openModal = (type: 'education' | 'tool' | 'edit', data: any) => setModal({ isOpen: true, type, data });
   const closeModal = () => setModal({ isOpen: false, type: null, data: null });
+
+  // Persistence Effect
+  useEffect(() => {
+    localStorage.setItem('vizuh_wardrobe', JSON.stringify(generatedWardrobe));
+  }, [generatedWardrobe]);
+
+  // Tip Rotation Effect (Runs on mount and intervals, independent of loading state for Dashboard)
+  useEffect(() => {
+    const tipInterval = setInterval(() => {
+      setCurrentTipIndex(prev => (prev + 1) % STYLE_TIPS.length);
+    }, 6000);
+    return () => clearInterval(tipInterval);
+  }, []);
 
   // Handle Loading UX Animation
   useEffect(() => {
@@ -596,14 +621,8 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
 
       }, 100);
 
-      // Cycle tips every 6 seconds
-      const tipInterval = setInterval(() => {
-        setCurrentTipIndex(prev => (prev + 1) % STYLE_TIPS.length);
-      }, 6000);
-
       return () => {
         clearInterval(interval);
-        clearInterval(tipInterval);
       };
     }
   }, [isProcessing, view]);
@@ -614,7 +633,6 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
       const reader = new FileReader();
       reader.onloadend = () => {
         setUser(prev => ({ ...prev, image: reader.result as string }));
-
       };
       reader.readAsDataURL(file);
     }
@@ -625,7 +643,6 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
     if (view === 'analyzing' && user.image && !user.analyzed) {
       const performAnalysis = async () => {
         setIsProcessing(true);
-        // setProcessingStep handled by useEffect now
         
         try {
           // Real API Call
@@ -746,9 +763,12 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
   
   const saveToWardrobe = () => {
     if (generatedLook) {
-      // Check if already exists by ID? Since ID is time based, we check if title matches roughly or just append
-      // Let's just append but give feedback
-      setGeneratedWardrobe(prev => [...prev, { ...generatedLook, id: `${generatedLook.id}-saved-${Date.now()}` }]);
+      const isAlreadySaved = generatedWardrobe.some(l => l.id === generatedLook.id);
+      if (isAlreadySaved) {
+        alert("Este look já foi salvo!");
+        return;
+      }
+      setGeneratedWardrobe(prev => [...prev, { ...generatedLook }]);
       alert("Look salvo no guarda-roupa!");
     }
   };
@@ -758,7 +778,7 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
     try {
       await navigator.share({
         title: `Meu Look Vizuhalizando: ${generatedLook.titulo}`,
-        text: `Confira este look gerado por IA: ${generatedLook.titulo}. ${generatedLook.detalhes}`,
+        text: `Confira este look gerado por IA: ${generatedLook.titulo}.`,
         url: window.location.href
       });
     } catch (err) {
@@ -832,16 +852,18 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
               </>
             )}
           </label>
+
+          <div className="w-full max-w-sm mt-6">
+             <Button 
+                onClick={() => setView('analyzing')} 
+                disabled={!user.image}
+                className="w-full text-lg shadow-xl shadow-violet-200"
+                variant={user.image ? "primary" : "secondary"}
+             >
+                Continuar Análise
+             </Button>
+          </div>
         </div>
-                  {user.image && (
-                    <Button
-                                    variant="primary"
-                                    onClick={() => setView('analyzing')}
-                                    className="w-full max-w-sm mt-6"
-                                  >
-                                    Continuar Análise
-                                  </Button>
-                  )}
       </div>
     );
   }
@@ -944,7 +966,9 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
               className="p-2 bg-slate-50 rounded-full text-slate-600 hover:bg-slate-100 relative"
             >
                <ShoppingBag className="w-6 h-6" />
-               <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+               {generatedWardrobe.length > 0 && (
+                 <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+               )}
             </button>
           </div>
 
@@ -965,6 +989,21 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
         </header>
 
         <div className="p-6 space-y-8 overflow-y-auto">
+          {/* Daily Tip Section (New Feature) */}
+          <section className="bg-gradient-to-r from-violet-100 to-fuchsia-50 p-4 rounded-xl border border-violet-100">
+            <div className="flex items-start gap-3">
+              <div className="bg-white p-2 rounded-full shadow-sm text-violet-600 mt-1">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-violet-900 font-bold text-sm mb-1">Dica do Dia</h4>
+                <p className="text-violet-700 text-xs leading-relaxed animate-in fade-in duration-500 key={currentTipIndex}">
+                  {STYLE_TIPS[currentTipIndex]}
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800">Gerador Gemini</h3>
@@ -987,7 +1026,7 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
                 </div>
               </div>
 
-              {/* Novo Botão para Layout Generator */}
+              {/* Botão para Layout Generator */}
               <div 
                 onClick={() => setView('layout-generator')}
                 className="group relative h-40 rounded-2xl overflow-hidden cursor-pointer shadow-md transition-transform hover:scale-[1.02]"
@@ -1267,4 +1306,4 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
   return <div>Carregando...</div>;
 };
 
-export default App;
+export default VizuhalizandoApp;

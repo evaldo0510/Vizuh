@@ -58,7 +58,7 @@ export interface LayoutResult {
   lightingTips: string;
 }
 
-// Feature: Analyze Images (Gemini 3 Pro + Thinking)
+// Feature: Analyze Images (Gemini 2.5 Flash)
 export const analyzeUserImage = async (base64Image: string): Promise<AnalysisResult> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
 
@@ -80,7 +80,7 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
 
   return executeWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
@@ -90,7 +90,6 @@ export const analyzeUserImage = async (base64Image: string): Promise<AnalysisRes
       config: {
         responseMimeType: 'application/json',
         responseSchema: schema,
-        thinkingConfig: { thinkingBudget: 32768 }
       }
     });
 
