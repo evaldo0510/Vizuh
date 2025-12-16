@@ -614,7 +614,7 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
       const reader = new FileReader();
       reader.onloadend = () => {
         setUser(prev => ({ ...prev, image: reader.result as string }));
-        setView('analyzing');
+
       };
       reader.readAsDataURL(file);
     }
@@ -833,6 +833,15 @@ const App = () => {  const [view, setView] = useState<ViewState>('onboarding');
             )}
           </label>
         </div>
+                  {user.image && (
+                    <Button
+                                    variant="primary"
+                                    onClick={() => setView('analyzing')}
+                                    className="w-full max-w-sm mt-6"
+                                  >
+                                    Continuar Análise
+                                  </Button>
+                  )}
       </div>
     );
   }
